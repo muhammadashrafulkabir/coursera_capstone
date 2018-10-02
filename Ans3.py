@@ -3,6 +3,13 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+# Matplotlib and associated plotting modules
+import matplotlib.cm as cm
+import matplotlib.colors as colors
+
+# import k-means from clustering stage
+from sklearn.cluster import KMeans
+import folium # map rendering library
 
 
 
@@ -41,7 +48,7 @@ for table in soup.findAll("table", {"class": "wikitable sortable"}):
                            
                     if columns[0].text in df.values:
                         # do nothing
-                        print('Found multiple entries for '+columns[0].text)
+                        print(' ')
                     else:
                         if nan != 0:
                             #append to the empty dataframe
@@ -53,17 +60,60 @@ for table in soup.findAll("table", {"class": "wikitable sortable"}):
 #Replace all \n
 df=df.replace(to_replace='\n', value='', regex=True)
 
-print(df)
+#print(df)
 #df
-df.shape
+#df.shape
 
 df_geo=pd.read_csv("Geospatial_Coordinates.csv")
 #print (df_geo)
 df_new=pd.merge (df,df_geo,on="Postal Code")
-print (df_new)
+#print (df_new)
 
-#for ind,dfrow in df_geo.iterrows():
+df_grouped = df_new.groupby('Neighbourhood').mean().reset_index()
+print(df_grouped)
 
-#    print(df.loc[df['Postal Code'] == dfrow['Postal Code'], 'Latitude':])
-    #= [dfrow['Latitude'],dfrow['Longitude']] 
-    #dfrow['Latitude']=df_geo['Postal Code']==dfrow['Postal Code']
+# set number of clusters
+kclusters = 5
+
+df_clustering = df_grouped.drop('Neighbourhood', 1)
+
+# run k-means clustering
+kmeans = KMeans(n_clusters=kclusters, random_state=0).fit(df_clustering)
+
+# check cluster labels generated for each row in the dataframe
+kmeans.labels_[0:10]
+
+df_merged = df_new
+
+# add clustering labels
+df_merged['Cluster Labels'] = kmeans.labels_
+
+
+print(df_merged.head()) # check the last columns!
+
+latitude=43.6542599
+longitude=-79.3606359
+
+# create map
+map_clusters = folium.Map(location=[latitude, longitude], zoom_start=11)
+
+# set color scheme for the clusters
+x = np.arange(kclusters)
+ys = [i+x+(i*x)**2 for i in range(kclusters)]
+colors_array = cm.rainbow(np.linspace(0, 1, len(ys)))
+rainbow = [colors.rgb2hex(i) for i in colors_array]
+
+# add markers to the map
+markers_colors = []
+for lat, lon, poi, cluster in zip(df_merged['Latitude'], df_merged['Longitude'], df_merged['Neighbourhood'], df_merged['Cluster Labels']):
+    label = folium.Popup(str(poi) + ' Cluster ' + str(cluster), parse_html=True)
+    folium.CircleMarker(
+        [lat, lon],
+        radius=5,
+        popup=label,
+        color=rainbow[cluster-1],
+        fill=True,
+        fill_color=rainbow[cluster-1],
+        fill_opacity=0.7).add_to(map_clusters)
+       
+map_clusters
